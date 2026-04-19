@@ -82,8 +82,10 @@ def _run_bt(mode: str, extra: list[str] | None = None) -> str:
     cmd = [PYTHON_BIN, BT_SCRIPT, "--mode", mode]
     if extra:
         cmd.extend(extra)
+    # modo buscar dorme 10s dentro do subprocess + overhead dbus
+    timeout = 25 if mode == "buscar" else 15
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         return result.stdout.strip()
     except Exception:
         return ""

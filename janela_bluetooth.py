@@ -246,6 +246,13 @@ class JanelaBluetooth(Gtk.Window):
 
                 hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
 
+                # Marcador de seleção — visível só quando selecionado
+                lbl_sel = Gtk.Label(label="▶")
+                lbl_sel.get_style_context().add_class("status-connected")
+                lbl_sel.set_visible(False)
+                hbox.pack_start(lbl_sel, False, False, 0)
+                row._lbl_sel = lbl_sel  # type: ignore[attr-defined]
+
                 # Ícone de status
                 connected = "conectado" in dev["status"].lower()
                 disponivel = dev["status"] == "disponível"
@@ -278,6 +285,12 @@ class JanelaBluetooth(Gtk.Window):
         self._listbox.show_all()
 
     def _on_row_selected(self, listbox: Gtk.ListBox, row: Gtk.ListBoxRow | None) -> None:
+        # Esconde marcador de todas as linhas
+        for child in listbox.get_children():
+            lbl = getattr(child, "_lbl_sel", None)
+            if lbl:
+                lbl.set_visible(False)
+
         if row is None:
             self._selected_mac = ""
             self._selected_status = ""
@@ -286,6 +299,11 @@ class JanelaBluetooth(Gtk.Window):
             self._btn_forget.set_sensitive(False)
             self._set_status("Selecione um dispositivo")
             return
+
+        # Mostra marcador ▶ na linha selecionada
+        lbl_sel = getattr(row, "_lbl_sel", None)
+        if lbl_sel:
+            lbl_sel.set_visible(True)
 
         mac = getattr(row, "_mac", "")
         status = getattr(row, "_status", "")
@@ -303,7 +321,7 @@ class JanelaBluetooth(Gtk.Window):
         self._btn_connect.set_sensitive(has_device and status != "conectado")
         self._btn_disconnect.set_sensitive(has_device and status == "conectado")
         self._btn_forget.set_sensitive(has_device)
-        self._set_status(f"Selecionado: {nome}")
+        self._set_status(f"▶  {nome}  ({status})")
 
     def _on_conectar(self, _btn) -> None:
         if not self._selected_mac:

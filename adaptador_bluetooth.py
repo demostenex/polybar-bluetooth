@@ -154,36 +154,31 @@ class AdaptadorBluetoothDBus:
         return dispositivos
 
     def parear(self, mac: str) -> None:
-        """Pareia com dispositivo via bluetoothctl com agente NoInputNoOutput.
+        """Pareia com dispositivo via sessão bluetoothctl com agente ativo.
 
-        O agente NoInputNoOutput faz o BlueZ aceitar automaticamente a
-        confirmação numérica do lado do PC — o usuário só precisa confirmar
-        no próprio dispositivo (ex: celular Android).
+        Toda a sequência (agent, pair, trust, connect) roda na mesma sessão
+        para que o agente permaneça ativo durante o pair. O agente
+        NoInputNoOutput aceita automaticamente confirmações numéricas do lado
+        do PC — o usuário apenas confirma no celular quando solicitado.
         """
         import subprocess
 
-        # Envia todos os comandos de uma vez via stdin; bluetoothctl
-        # executa em sequência e fecha quando o stdin fechar.
-        # Aguardamos 30s para a confirmação do usuário no aparelho.
+        # Tudo na mesma sessão: agent ativo durante o pair
         comandos = (
             "agent NoInputNoOutput\n"
             "default-agent\n"
             f"pair {mac}\n"
+            f"trust {mac}\n"
+            f"connect {mac}\n"
+            "quit\n"
         )
-        resultado = subprocess.run(
+        subprocess.run(
             ["bluetoothctl"],
             input=comandos,
             capture_output=True,
             text=True,
-            timeout=35,
+            timeout=40,
         )
-
-        # Após parear: trust (reconexão automática) + connect
-        subprocess.run(["bluetoothctl", "trust", mac], capture_output=True, text=True, timeout=10)
-        subprocess.run(["bluetoothctl", "connect", mac], capture_output=True, text=True, timeout=15)
-
-        if resultado.returncode != 0 and "Failed" in resultado.stdout:
-            raise RuntimeError(f"Pareamento falhou: {resultado.stdout.strip()}")
 
     def conectar(self, mac: str) -> None:
         caminho = self._caminho_por_mac(mac)

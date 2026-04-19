@@ -249,6 +249,7 @@ class JanelaBluetooth(Gtk.Window):
                 # Marcador de seleção — visível só quando selecionado
                 lbl_sel = Gtk.Label(label="▶")
                 lbl_sel.get_style_context().add_class("status-connected")
+                lbl_sel.set_no_show_all(True)
                 lbl_sel.set_visible(False)
                 hbox.pack_start(lbl_sel, False, False, 0)
                 row._lbl_sel = lbl_sel  # type: ignore[attr-defined]

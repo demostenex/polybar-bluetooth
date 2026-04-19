@@ -57,6 +57,7 @@ def saida_list(adaptador: AdaptadorBluetoothProtocol, historico: Historico) -> s
     """Retorna linhas tab-separadas para o yad.
 
     Formato por linha: mac \\t nome \\t status \\t tooltip
+    Mostra: dispositivos do histórico + dispositivos descobertos pelo scan.
     Dispositivos conectados são automaticamente salvos no histórico.
     """
     dispositivos = {d.mac.upper(): d for d in adaptador.listar_dispositivos()}
@@ -74,6 +75,8 @@ def saida_list(adaptador: AdaptadorBluetoothProtocol, historico: Historico) -> s
             macs_historico.add(dispositivo.mac)
 
     linhas: list[str] = []
+
+    # Primeiro: dispositivos do histórico (já conhecidos)
     for registro in registros:
         device = dispositivos.get(registro.mac)
         if device and device.conectado:
@@ -84,6 +87,12 @@ def saida_list(adaptador: AdaptadorBluetoothProtocol, historico: Historico) -> s
             status = "histórico"
         tooltip = f"{registro.mac} — último uso: {registro.ultimo_uso:%d/%m/%Y %H:%M}"
         linhas.append(f"{registro.mac}\t{registro.nome}\t{status}\t{tooltip}")
+
+    # Depois: dispositivos recém-descobertos pelo scan (não estão no histórico)
+    for dispositivo in dispositivos.values():
+        if dispositivo.mac not in macs_historico:
+            tooltip = f"{dispositivo.mac} — descoberto agora"
+            linhas.append(f"{dispositivo.mac}\t{dispositivo.nome}\tdisponível\t{tooltip}")
 
     return "\n".join(linhas)
 

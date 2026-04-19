@@ -103,17 +103,29 @@ def saida_list(adaptador: AdaptadorBluetoothProtocol, historico: Historico) -> s
 
 
 def _conectar(mac: str, adaptador: AdaptadorBluetoothProtocol, historico: Historico) -> int:
-    """Conecta sem desconectar dispositivos já ativos."""
+    """Para dispositivos não pareados usa parear(); para os já pareados usa conectar()."""
     dispositivos = {d.mac.upper(): d for d in adaptador.listar_dispositivos()}
     device = dispositivos.get(mac.upper())
     nome = device.nome if device else mac
-    adaptador.conectar(mac)
+
+    if device and device.emparelhado:
+        adaptador.conectar(mac)
+    else:
+        # Dispositivo disponível mas não pareado — usa bluetoothctl com agente
+        adaptador.parear(mac)
+
     historico.registrar(mac, nome)
     return 0
 
 
 def _desconectar(mac: str, adaptador: AdaptadorBluetoothProtocol) -> int:
     adaptador.desconectar(mac)
+    return 0
+
+
+def _esquecer(mac: str, adaptador: AdaptadorBluetoothProtocol, historico: Historico) -> int:
+    adaptador.esquecer(mac)
+    historico.remover(mac)
     return 0
 
 
@@ -126,7 +138,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Módulo Bluetooth para Polybar")
     parser.add_argument(
         "--mode",
-        choices=["module", "list", "toggle-power", "conectar", "desconectar", "buscar"],
+        choices=["module", "list", "toggle-power", "conectar", "desconectar", "buscar", "esquecer"],
         default="module",
     )
     parser.add_argument("--mac", default="", help="MAC do dispositivo alvo")
@@ -185,6 +197,12 @@ def main() -> int:
         if args.mode == "buscar":
             adaptador.buscar()
             return 0
+
+        if args.mode == "esquecer":
+            if not args.mac:
+                print("--mac é obrigatório para o modo esquecer.", file=sys.stderr)
+                return 1
+            return _esquecer(args.mac, adaptador, historico)
 
     except Exception as erro:
         if args.mode == "module":

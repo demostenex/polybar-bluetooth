@@ -70,7 +70,16 @@ button.power-btn { color: #cba6f7; }
     padding: 4px 6px;
 }
 .device-row:hover { background-color: #45475a; }
-.device-row.selected-device { background-color: #45475a; }
+row:selected .device-row,
+row:selected .device-row label {
+    background-color: #89b4fa;
+    color: #1e1e2e;
+    border-radius: 4px;
+}
+row:selected .status-connected,
+row:selected .status-disconnected {
+    color: #1e1e2e;
+}
 .device-row label { color: #cdd6f4; font-size: 9pt; }
 .status-connected { color: #a6e3a1; }
 .status-disconnected { color: #6c7086; }
@@ -110,6 +119,7 @@ class JanelaBluetooth(Gtk.Window):
     def __init__(self) -> None:
         super().__init__(type=Gtk.WindowType.POPUP)
         self._selected_mac: str = ""
+        self._selected_status: str = ""
         self._scanning = False
 
         self._apply_css()
@@ -192,6 +202,12 @@ class JanelaBluetooth(Gtk.Window):
         self._btn_disconnect.set_sensitive(False)
         btn_section.pack_start(self._btn_disconnect, True, True, 0)
 
+        self._btn_forget = Gtk.Button(label="🗑 Esquecer")
+        self._btn_forget.get_style_context().add_class("disconnect-btn")
+        self._btn_forget.connect("clicked", self._on_esquecer)
+        self._btn_forget.set_sensitive(False)
+        btn_section.pack_start(self._btn_forget, True, True, 0)
+
         self._btn_scan = Gtk.Button(label="🔍 Buscar (10s)")
         self._btn_scan.get_style_context().add_class("scan-btn")
         self._btn_scan.connect("clicked", self._on_buscar)
@@ -224,14 +240,21 @@ class JanelaBluetooth(Gtk.Window):
             for dev in devices:
                 row = Gtk.ListBoxRow()
                 row.get_style_context().add_class("device-row")
-                row._mac = dev["mac"]  # type: ignore[attr-defined]
+                row._mac = dev["mac"]      # type: ignore[attr-defined]
                 row._status = dev["status"]  # type: ignore[attr-defined]
+                row._nome = dev["nome"]    # type: ignore[attr-defined]
 
                 hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
 
                 # Ícone de status
                 connected = "conectado" in dev["status"].lower()
-                status_icon = "🔵" if connected else "⚪"
+                disponivel = dev["status"] == "disponível"
+                if connected:
+                    status_icon = "🔵"
+                elif disponivel:
+                    status_icon = "🟡"
+                else:
+                    status_icon = "⚪"
                 lbl_icon = Gtk.Label(label=status_icon)
                 hbox.pack_start(lbl_icon, False, False, 0)
 
@@ -257,24 +280,42 @@ class JanelaBluetooth(Gtk.Window):
     def _on_row_selected(self, listbox: Gtk.ListBox, row: Gtk.ListBoxRow | None) -> None:
         if row is None:
             self._selected_mac = ""
+            self._selected_status = ""
             self._btn_connect.set_sensitive(False)
             self._btn_disconnect.set_sensitive(False)
+            self._btn_forget.set_sensitive(False)
+            self._set_status("Selecione um dispositivo")
             return
 
         mac = getattr(row, "_mac", "")
+        status = getattr(row, "_status", "")
+        nome = getattr(row, "_nome", mac)
         self._selected_mac = mac
+        self._selected_status = status
         has_device = bool(mac)
-        self._btn_connect.set_sensitive(has_device)
-        self._btn_disconnect.set_sensitive(has_device)
+
+        # Label do botão conectar muda conforme o estado
+        if status == "disponível":
+            self._btn_connect.set_label("🔗 Parear")
+        else:
+            self._btn_connect.set_label("⚡ Conectar")
+
+        self._btn_connect.set_sensitive(has_device and status != "conectado")
+        self._btn_disconnect.set_sensitive(has_device and status == "conectado")
+        self._btn_forget.set_sensitive(has_device)
+        self._set_status(f"Selecionado: {nome}")
 
     def _on_conectar(self, _btn) -> None:
         if not self._selected_mac:
             return
-        self._set_status("Conectando…")
+        if self._selected_status == "disponível":
+            self._set_status("Pareando… (confirme no celular)")
+        else:
+            self._set_status("Conectando…")
         self._btn_connect.set_sensitive(False)
 
         def _do():
-            _run_bt("conectar", ["--mac", self._selected_mac])
+            _run_bt("conectar", ["--mac", self._selected_mac], timeout=35)
             GLib.idle_add(self._after_action, "Conectado!")
 
         threading.Thread(target=_do, daemon=True).start()
@@ -287,6 +328,18 @@ class JanelaBluetooth(Gtk.Window):
         def _do():
             _run_bt("desconectar", ["--mac", self._selected_mac])
             GLib.idle_add(self._after_action, "Desconectado.")
+
+        threading.Thread(target=_do, daemon=True).start()
+
+    def _on_esquecer(self, _btn) -> None:
+        if not self._selected_mac:
+            return
+        self._set_status("Esquecendo dispositivo…")
+        self._btn_forget.set_sensitive(False)
+
+        def _do():
+            _run_bt("esquecer", ["--mac", self._selected_mac])
+            GLib.idle_add(self._after_action, "Dispositivo esquecido.")
 
         threading.Thread(target=_do, daemon=True).start()
 

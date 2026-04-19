@@ -32,8 +32,10 @@ class AdaptadorBluetoothProtocol(Protocol):
     def ligar(self) -> None: ...
     def desligar(self) -> None: ...
     def listar_dispositivos(self) -> list[DispositivoBluetooth]: ...
+    def parear(self, mac: str) -> None: ...
     def conectar(self, mac: str) -> None: ...
     def desconectar(self, mac: str) -> None: ...
+    def esquecer(self, mac: str) -> None: ...
     def buscar(self, segundos: int = 10) -> None: ...
 
 
@@ -151,6 +153,16 @@ class AdaptadorBluetoothDBus:
             dispositivos.append(DispositivoBluetooth(mac, nome, conectado, emparelhado))
         return dispositivos
 
+    def parear(self, mac: str) -> None:
+        """Pareia com dispositivo usando bluetoothctl (inclui agente de PIN/passkey)."""
+        import subprocess
+        # pair — bluetoothctl lida com o agente para confirmação numérica/PIN
+        subprocess.run(["bluetoothctl", "pair", mac], capture_output=True, text=True, timeout=30)
+        # trust — para reconectar automaticamente no futuro
+        subprocess.run(["bluetoothctl", "trust", mac], capture_output=True, text=True, timeout=10)
+        # connect após parear
+        subprocess.run(["bluetoothctl", "connect", mac], capture_output=True, text=True, timeout=15)
+
     def conectar(self, mac: str) -> None:
         caminho = self._caminho_por_mac(mac)
         if not caminho:
@@ -162,6 +174,11 @@ class AdaptadorBluetoothDBus:
         if not caminho:
             raise ValueError(f"Dispositivo não encontrado: {mac}")
         self._objeto_dispositivo(caminho).Disconnect()
+
+    def esquecer(self, mac: str) -> None:
+        """Remove dispositivo do BlueZ (despareia e esquece)."""
+        import subprocess
+        subprocess.run(["bluetoothctl", "remove", mac], capture_output=True, text=True, timeout=10)
 
     def buscar(self, segundos: int = 10) -> None:
         import time

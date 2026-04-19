@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Abre/fecha a janela GTK de gerenciamento Bluetooth.
-# Uso:
-#   polybar-bluetooth-toggle.sh              → abre/fecha janela principal
-#   polybar-bluetooth-toggle.sh --toggle-bt  → liga/desliga Bluetooth
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PYTHON_BIN="$SCRIPT_DIR/.venv/bin/python"
-[ -x "$PYTHON_BIN" ] || PYTHON_BIN="$(command -v python3)"
+# Janelas GTK precisam do python3 do sistema (tem gi/PyGObject)
+PYTHON_GTK="$(command -v python3)"
+# Scripts do projeto usam o venv (tem dbus, bluetooth etc.)
+PYTHON_VENV="$SCRIPT_DIR/.venv/bin/python"
+[ -x "$PYTHON_VENV" ] || PYTHON_VENV="$PYTHON_GTK"
 
 BT_SCRIPT="$SCRIPT_DIR/bluetooth_polybar.py"
 JANELA="$SCRIPT_DIR/janela_bluetooth.py"
@@ -15,7 +15,7 @@ PID_FILE="${XDG_RUNTIME_DIR:-/tmp}/polybar-bluetooth.pid"
 
 # Liga/desliga Bluetooth direto (clique direito no ícone)
 if [[ "${1:-}" == "--toggle-bt" ]]; then
-  "$PYTHON_BIN" "$BT_SCRIPT" --mode toggle-power
+  "$PYTHON_VENV" "$BT_SCRIPT" --mode toggle-power
   exit 0
 fi
 
@@ -34,5 +34,5 @@ if [[ -f "$PID_FILE" ]]; then
 fi
 
 # Abre a janela GTK
-NO_AT_BRIDGE=1 "$PYTHON_BIN" "$JANELA" &
+NO_AT_BRIDGE=1 "$PYTHON_GTK" "$JANELA" &
 echo "$!" > "$PID_FILE"

@@ -154,53 +154,58 @@ class AdaptadorBluetoothDBus:
         return dispositivos
 
     def parear(self, mac: str) -> None:
-        """Pareia dispositivo usando expect para responder ao desafio de passkey.
+        """Pareia dispositivo usando expect para responder ao passkey do BlueZ.
 
-        Fluxo:
-          1. scan on (8s) — garante que o dispositivo está visível para o BlueZ
-          2. pair <mac>   — BlueZ pede confirmação numérica ("yes/no")
-          3. expect responde "yes" automaticamente do lado do PC
-          4. Usuário confirma no próprio aparelho (celular/fone)
-          5. trust + connect após pareamento
-
-        O uso de expect é necessário porque o BlueZ exige resposta interativa
-        ao prompt "(yes/no)" — não é possível pre-alimentar via stdin simples.
+        Grava o script em arquivo temporário para evitar problemas de escaping
+        ao passar via -c. O expect responde "yes" ao prompt interativo do BlueZ
+        e o usuário confirma no próprio aparelho (celular/fone).
         """
         import subprocess
+        import tempfile
+        import os
 
-        script_expect = f"""
-set timeout 50
-spawn bluetoothctl
-expect -re {{.*#.*}}
-send "agent NoInputNoOutput\\r"
-sleep 1
-send "default-agent\\r"
-sleep 1
-send "scan on\\r"
-sleep 8
-send "pair {mac}\\r"
-expect {{
-    -re {{(yes/no)}} {{ send "yes\\r"; exp_continue }}
-    "Pairing successful" {{ puts "OK" }}
-    "Failed"             {{ puts "FALHOU"; exit 1 }}
-    timeout              {{ puts "TIMEOUT"; exit 2 }}
-}}
-send "trust {mac}\\r"
-sleep 2
-send "connect {mac}\\r"
-sleep 3
-send "quit\\r"
-expect eof
-"""
-        resultado = subprocess.run(
-            ["expect", "-c", script_expect],
-            capture_output=True,
-            text=True,
-            timeout=65,
+        script = (
+            "set timeout 50\n"
+            "spawn bluetoothctl\n"
+            "sleep 1\n"
+            'send "agent NoInputNoOutput\\r"\n'
+            "sleep 1\n"
+            'send "default-agent\\r"\n'
+            "sleep 1\n"
+            'send "scan on\\r"\n'
+            "sleep 8\n"
+            f'send "pair {mac}\\r"\n'
+            "expect {\n"
+            '    -re {(yes/no)} { send "yes\\r"; exp_continue }\n'
+            '    "Pairing successful" { puts "PAREADO" }\n'
+            '    "Failed"             { puts "FALHOU"; exit 1 }\n'
+            '    timeout              { puts "TIMEOUT"; exit 2 }\n'
+            "}\n"
+            f'send "trust {mac}\\r"\n'
+            "sleep 2\n"
+            f'send "connect {mac}\\r"\n'
+            "sleep 3\n"
+            'send "quit\\r"\n'
+            "expect eof\n"
         )
 
-        if resultado.returncode != 0 or "FALHOU" in resultado.stdout or "TIMEOUT" in resultado.stdout:
-            raise RuntimeError(f"Pareamento falhou: {resultado.stdout.strip()}")
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".exp", delete=False) as f:
+            f.write(script)
+            script_path = f.name
+
+        try:
+            resultado = subprocess.run(
+                ["expect", script_path],
+                capture_output=True,
+                text=True,
+                timeout=70,
+            )
+        finally:
+            os.unlink(script_path)
+
+        saida = resultado.stdout + resultado.stderr
+        if resultado.returncode != 0 or "FALHOU" in saida or "TIMEOUT" in saida:
+            raise RuntimeError(f"Pareamento falhou: {saida.strip()}")
 
     def conectar(self, mac: str) -> None:
         caminho = self._caminho_por_mac(mac)

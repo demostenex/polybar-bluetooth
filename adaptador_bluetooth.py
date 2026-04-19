@@ -154,31 +154,53 @@ class AdaptadorBluetoothDBus:
         return dispositivos
 
     def parear(self, mac: str) -> None:
-        """Pareia com dispositivo via sessão bluetoothctl com agente ativo.
+        """Pareia dispositivo usando expect para responder ao desafio de passkey.
 
-        Toda a sequência (agent, pair, trust, connect) roda na mesma sessão
-        para que o agente permaneça ativo durante o pair. O agente
-        NoInputNoOutput aceita automaticamente confirmações numéricas do lado
-        do PC — o usuário apenas confirma no celular quando solicitado.
+        Fluxo:
+          1. scan on (8s) — garante que o dispositivo está visível para o BlueZ
+          2. pair <mac>   — BlueZ pede confirmação numérica ("yes/no")
+          3. expect responde "yes" automaticamente do lado do PC
+          4. Usuário confirma no próprio aparelho (celular/fone)
+          5. trust + connect após pareamento
+
+        O uso de expect é necessário porque o BlueZ exige resposta interativa
+        ao prompt "(yes/no)" — não é possível pre-alimentar via stdin simples.
         """
         import subprocess
 
-        # Tudo na mesma sessão: agent ativo durante o pair
-        comandos = (
-            "agent NoInputNoOutput\n"
-            "default-agent\n"
-            f"pair {mac}\n"
-            f"trust {mac}\n"
-            f"connect {mac}\n"
-            "quit\n"
-        )
-        subprocess.run(
-            ["bluetoothctl"],
-            input=comandos,
+        script_expect = f"""
+set timeout 50
+spawn bluetoothctl
+expect -re {{.*#.*}}
+send "agent NoInputNoOutput\\r"
+sleep 1
+send "default-agent\\r"
+sleep 1
+send "scan on\\r"
+sleep 8
+send "pair {mac}\\r"
+expect {{
+    -re {{(yes/no)}} {{ send "yes\\r"; exp_continue }}
+    "Pairing successful" {{ puts "OK" }}
+    "Failed"             {{ puts "FALHOU"; exit 1 }}
+    timeout              {{ puts "TIMEOUT"; exit 2 }}
+}}
+send "trust {mac}\\r"
+sleep 2
+send "connect {mac}\\r"
+sleep 3
+send "quit\\r"
+expect eof
+"""
+        resultado = subprocess.run(
+            ["expect", "-c", script_expect],
             capture_output=True,
             text=True,
-            timeout=40,
+            timeout=65,
         )
+
+        if resultado.returncode != 0 or "FALHOU" in resultado.stdout or "TIMEOUT" in resultado.stdout:
+            raise RuntimeError(f"Pareamento falhou: {resultado.stdout.strip()}")
 
     def conectar(self, mac: str) -> None:
         caminho = self._caminho_por_mac(mac)

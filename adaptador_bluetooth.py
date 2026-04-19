@@ -164,9 +164,22 @@ class AdaptadorBluetoothDBus:
         self._objeto_dispositivo(caminho).Disconnect()
 
     def buscar(self, segundos: int = 10) -> None:
-        adapter = self._objeto_adapter()
-        adapter.StartDiscovery()
         import time
 
-        time.sleep(segundos)
-        adapter.StopDiscovery()
+        props = self._propriedades_adapter()
+
+        # Garante que o adaptador está pareável — sem isso muitos dispositivos
+        # Android ficam invisíveis durante o scan.
+        pairable_antes = bool(props.Get(self._ADAPTER_IFACE, "Pairable"))
+        if not pairable_antes:
+            props.Set(self._ADAPTER_IFACE, "Pairable", self._dbus.Boolean(True))
+
+        adapter = self._objeto_adapter()
+        try:
+            adapter.StartDiscovery()
+            time.sleep(segundos)
+            adapter.StopDiscovery()
+        finally:
+            # Restaura estado original de Pairable
+            if not pairable_antes:
+                props.Set(self._ADAPTER_IFACE, "Pairable", self._dbus.Boolean(False))

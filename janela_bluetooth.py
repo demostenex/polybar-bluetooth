@@ -327,11 +327,7 @@ class JanelaBluetooth(Gtk.Window):
         self._selected_status = status
         has_device = bool(mac)
 
-        # Label do botão conectar muda conforme o estado
-        if status == "disponível":
-            self._btn_connect.set_label("🔗 Parear")
-        else:
-            self._btn_connect.set_label("⚡ Conectar")
+        self._btn_connect.set_label("⚡ Conectar")
 
         self._btn_connect.set_sensitive(has_device and status != "conectado")
         self._btn_disconnect.set_sensitive(has_device and status == "conectado")
@@ -412,8 +408,8 @@ class JanelaBluetooth(Gtk.Window):
 
     def _after_action(self, msg: str) -> None:
         self._set_status(msg)
-        self._btn_connect.set_sensitive(bool(self._selected_mac))
-        self._btn_disconnect.set_sensitive(bool(self._selected_mac))
+        # Recarrega a lista — os botões serão reconfigurados quando o
+        # usuário re-selecionar a linha (ou a seleção for restaurada)
         self._carregar_dispositivos()
 
     def _set_status(self, msg: str, classe: str = "") -> None:

@@ -87,16 +87,30 @@ row:selected .status-disconnected {
 """
 
 
-def _run_bt(mode: str, extra: list[str] | None = None) -> str:
+LOG_FILE = pathlib.Path("/tmp/bluetooth-polybar.log")
+
+
+def _log(msg: str) -> None:
+    import datetime
+    ts = datetime.datetime.now().strftime("%H:%M:%S")
+    LOG_FILE.open("a").write(f"[{ts}] {msg}\n")
+
+
+def _run_bt(mode: str, extra: list[str] | None = None, timeout: int | None = None) -> str:
     cmd = [PYTHON_BIN, BT_SCRIPT, "--mode", mode]
     if extra:
         cmd.extend(extra)
-    # modo buscar dorme 10s dentro do subprocess + overhead dbus
-    timeout = 25 if mode == "buscar" else 15
+    if timeout is None:
+        timeout = 25 if mode == "buscar" else 15
+    _log(f"_run_bt mode={mode} timeout={timeout} cmd={' '.join(cmd)}")
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        _log(f"  rc={result.returncode} stdout={result.stdout.strip()[:200]!r}")
+        if result.stderr.strip():
+            _log(f"  stderr={result.stderr.strip()[:200]!r}")
         return result.stdout.strip()
-    except Exception:
+    except Exception as e:
+        _log(f"  EXCEÇÃO: {e}")
         return ""
 
 
@@ -327,14 +341,18 @@ class JanelaBluetooth(Gtk.Window):
     def _on_conectar(self, _btn) -> None:
         if not self._selected_mac:
             return
-        if self._selected_status == "disponível":
-            self._set_status("Pareando… (confirme no celular)")
-        else:
-            self._set_status("Conectando…")
+        mac = self._selected_mac
+        status = self._selected_status
+
+        # "conectar" no CLI decide internamente: parear() se disponível, conectar() se já pareado
+        timeout = 75 if status == "disponível" else 20
+        msg = "Pareando… (confirme no celular)" if status == "disponível" else "Conectando…"
+        self._set_status(msg)
         self._btn_connect.set_sensitive(False)
+        _log(f"_on_conectar: mac={mac} status={status} timeout={timeout}")
 
         def _do():
-            _run_bt("conectar", ["--mac", self._selected_mac], timeout=35)
+            _run_bt("conectar", ["--mac", mac], timeout=timeout)
             GLib.idle_add(self._after_action, "Conectado!")
 
         threading.Thread(target=_do, daemon=True).start()
